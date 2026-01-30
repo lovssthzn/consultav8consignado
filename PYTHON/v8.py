@@ -56,7 +56,7 @@ def buscar_dados_cliente(cpf):
     if not token:
         return None
 
-    print(f"[API] Consultando dados do CPF {cpf}...")
+    print(f"\n[API] Consultando dados do CPF {cpf}...")
     try:
         response = requests.post(
             f"{API_BASE_URL}/NVCHECKJson",
@@ -288,7 +288,7 @@ def executar_automacao_v8(dados_cliente):
 # EXECUÇÃO PRINCIPAL
 # ==============================================================================
 if __name__ == "__main__":
-    print("--- SISTEMA INTEGRADO NOVA VIDA -> V8 ---")
+    print("\n--- SISTEMA INTEGRADO NOVA VIDA -> V8 ---")
     cpf_input = input("Digite o CPF do cliente: ").strip().replace(".", "").replace("-", "")
 
     if cpf_input:
@@ -301,6 +301,6 @@ if __name__ == "__main__":
             # Passo 2: Joga os dados no Playwright
             executar_automacao_v8(cliente)
         else:
-            print("[ERRO] Cliente não encontrado na Nova Vida. Abortando V8.")
+            print("\n[ERRO] Cliente não encontrado na Nova Vida. Abortando V8.")
     else:
         print("CPF inválido.")
