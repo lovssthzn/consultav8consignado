@@ -27,10 +27,9 @@ API_CREDS = {
     "usuario": usuario,
     "senha": senha, 
     "cliente": cliente
-}
+    }
 
 # Configurações do Sistema V8 
-
 V8_URL = url_v8 
 V8_LOGIN = usuario_v8
 V8_SENHA = senha_v8
@@ -95,7 +94,7 @@ def executar_automacao_v8(dados_cliente):
     
     with sync_playwright() as p:
         # headless=False para você ver o navegador abrindo (bom para dev)
-        browser = p.chromium.launch(headless=False, slow_mo=500)
+        browser = p.chromium.launch(headless=True, slow_mo=500)
         context = browser.new_context(permissions=["clipboard-read", "clipboard-write"])
         page = context.new_page()
 
@@ -103,14 +102,14 @@ def executar_automacao_v8(dados_cliente):
             # 1. Acessar V8
             print("[V8] Acessando página de login...")
             page.goto(V8_URL)
-# --------------------------------------------------------------------------------------
+
             # PASSO 1: Clicar em "Entrar na minha conta"
             # Usamos get_by_role para ser bem específico: "Quero o botão que tem o nome X"
             print("[V8] Clicando no botão de entrar...")
             page.get_by_role("button", name="Entrar na minha conta").click()
 
             page.wait_for_selector('input[name="email"]')
-# --------------------------------------------------------------------------------------
+
             # PASSO 2: Preencher Login e Senha
             print("[V8] Preenchendo credenciais...")
 
@@ -119,11 +118,11 @@ def executar_automacao_v8(dados_cliente):
             page.click("button[type='submit']")
 
             time.sleep(6)  # Aguarda 6 segundos para garantir o login
-# --------------------------------------------------------------------------------------
+
             # PASSO 3: Ir para pagina CLT
             print("[V8] Navegando para Crédito Consignado...")
             page.goto("https://app.v8sistema.com/credito-consignado")
-# --------------------------------------------------------------------------------------
+
             # PASSO 4: 'Gerar termo de autorização'
             print("[V8] Clicando em Gerar termo...")
             
@@ -131,7 +130,7 @@ def executar_automacao_v8(dados_cliente):
 
             print("[V8] Aguardando modal de cadastro...")
             page.wait_for_selector('input[name="signerName"]')
-# --------------------------------------------------------------------------------------
+
             print("[V8] Preenchendo dados cadastrais...")
 
             page.fill('input[name="signerName"]', dados_cliente['Nome'])
@@ -147,7 +146,7 @@ def executar_automacao_v8(dados_cliente):
             page.click("button[type='submit']")
             
             time.sleep(2)  # Aguarda 2 segundos
-# --------------------------------------------------------------------------------------
+
             print("[V8] Iniciando autorização...")
 
             # Pegando o link gerado
@@ -162,7 +161,7 @@ def executar_automacao_v8(dados_cliente):
             print(f"[V8] Link capturado: {link_capturado}")
 
             time.sleep(2)
-# --------------------------------------------------------------------------------------            
+         
             # Autorizando LINK
             nova_aba = context.new_page()
             nova_aba.goto(link_capturado)      
@@ -181,7 +180,7 @@ def executar_automacao_v8(dados_cliente):
 
             print("[V8] Fechando a aba do termo...")
             nova_aba.close()
-# --------------------------------------------------------------------------------------
+
             # PASSO 5: LOOP DE VERIFICAÇÃO DE ERROS
             max_tentativas = 25
             status_final = None
