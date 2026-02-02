@@ -1,9 +1,10 @@
 import requests
 import json
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 import time
 import os
 from dotenv import load_dotenv
+import re
 
 # ==============================================================================
 # CONFIGURAÇÕES GERAIS
@@ -89,8 +90,21 @@ def buscar_dados_cliente(cpf):
 # ==============================================================================
 # PARTE 2: AUTOMACAO V8 (Playwright)
 # ==============================================================================
+
+def limpar_valor_moeda(texto):
+    """Converte 'R$ 1.200,50' para float 1200.50"""
+    if not texto: return 0.0
+    # Remove tudo que não for número ou vírgula
+    limpo = re.sub(r'[^\d,]', '', str(texto))
+    # Troca vírgula por ponto
+    limpo = limpo.replace(',', '.')
+    try:
+        return float(limpo)
+    except:
+        return 0.0
+
 def executar_automacao_v8(dados_cliente):
-    print(f"\n[V8] Iniciando automação para: {dados_cliente['Nome']}")
+    print(f"[V8] Iniciando automação para: {dados_cliente['Nome']}")
     
     with sync_playwright() as p:
         # headless=False para você ver o navegador abrindo (bom para dev)
@@ -100,7 +114,7 @@ def executar_automacao_v8(dados_cliente):
 
         try:
             # 1. Acessar V8
-            print("[V8] Acessando página de login...")
+            print("\n[V8] Acessando página de login...")
             page.goto(V8_URL)
 
             # PASSO 1: Clicar em "Entrar na minha conta"
@@ -120,7 +134,7 @@ def executar_automacao_v8(dados_cliente):
             time.sleep(6)  # Aguarda 6 segundos para garantir o login
 
             # PASSO 3: Ir para pagina CLT
-            print("[V8] Navegando para Crédito Consignado...")
+            print("\n[V8] Navegando para Crédito Consignado...")
             page.goto("https://app.v8sistema.com/credito-consignado")
 
             # PASSO 4: 'Gerar termo de autorização'
@@ -145,9 +159,45 @@ def executar_automacao_v8(dados_cliente):
             time.sleep(2)
             page.click("button[type='submit']")
             
-            time.sleep(2)  # Aguarda 2 segundos
+            time.sleep(1)  # Aguarda 2 segundos
 
-            print("[V8] Iniciando autorização...")
+            print("\n[V8] Verificando se o sistema aceitou o cadastro (10s)...")
+            
+            try:
+                # Procura o TOAST de status (seja sucesso ou erro)
+                toast = page.locator("div[role='status'].chakra-toast__inner").first
+                toast.wait_for(state="visible", timeout=10000)
+                
+                # 2. Captura o texto e NORMALIZA (Tudo minúsculo + sem espaços extras)
+                msg_original = toast.locator("p").first.text_content()
+                msg_tratada = msg_original.lower().strip()
+
+                # Usamos "in" em vez de "==" para ser mais seguro contra espaços extras
+                if "já existe" in msg_tratada or "consulta ativa" in msg_tratada:
+                    print(f"⚠️  CLIENTE JÁ POSSUI CADASTRO. Fechando aviso...")
+                    # O código NÃO tem 'return' aqui, então ele vai descer para o Passo 3 normalmente
+
+                    time.sleep(1)  # Aguarda 2 segundos
+
+                    try:
+                        page.locator(".css-1knh66s").first.click()
+                    except:
+                        print("[V8] Não achei o X, pressionando ESC...")
+                        page.keyboard.press("Escape")
+
+                elif "sucesso" in msg_tratada or "gerado" in msg_tratada:
+                    print(f"✅ CADASTRO NOVO REALIZADO!")
+                    
+                else:
+                    # Se for "Já existe consulta" ou qualquer outra coisa ruim
+                    print(f"\n⛔ CADASTRO BARRADO: {msg_tratada}")
+                    return f"Erro no Cadastro: {msg_tratada}"
+
+            except PlaywrightTimeoutError:
+                # Se passar 10s e nada aparecer, assumimos que deu certo
+                print("[V8] Nenhum aviso apareceu (Timeout). Assumindo sucesso...")
+
+            time.sleep(2)  # Aguarda 2 segundos
 
             # Pegando o link gerado
             page.get_by_placeholder("Buscar").fill(dados_cliente['CPF']) # Preenche o CPF no campo de busca
@@ -158,7 +208,7 @@ def executar_automacao_v8(dados_cliente):
             botao_link = page.locator("p.chakra-text.css-w1yups").first 
             botao_link.click() # Pega o link gerado e clica nele
             link_capturado = page.evaluate("navigator.clipboard.readText()")
-            print(f"[V8] Link capturado: {link_capturado}")
+            print(f"\n[V8] Link capturado")
 
             time.sleep(2)
          
@@ -186,7 +236,7 @@ def executar_automacao_v8(dados_cliente):
             status_final = None
 
             for i in range(max_tentativas):
-                print(f"[V8] Verificação {i+1}/{max_tentativas}...")
+                print(f"\n[V8] Verificação {i+1}/{max_tentativas}...")
                 
                 # --- PASSO 1: ATUALIZAR A PÁGINA ---
                 botao_atualizar = page.locator("button[aria-label='edit']").first
@@ -207,9 +257,86 @@ def executar_automacao_v8(dados_cliente):
                 badge_rejeitado = page.get_by_text("Rejeitado").locator("visible=true")
                 badge_falha = page.get_by_text("Falha ao gerar consentimento").locator("visible=true")
 
+                badge_margem = page.locator("text=/^R\$\s/").locator("visible=true")
+
+                if badge_margem.count() > 0:
+                    texto_valor = badge_margem.first.text_content()
+
+                    # Função de limpeza local (ou use a função global se criou lá em cima)
+                    valor_limpo = re.sub(r'[^\d,]', '', str(texto_valor)).replace(',', '.')
+                    valor_float = float(valor_limpo) if valor_limpo else 0.0
+
+                    print(f"\n[V8] 💰 Valor encontrado na tela: {texto_valor}")
+
+                    if valor_float > 50.00:
+                        print("\n✅ MARGEM POSITIVA. Iniciando Simulação...")
+                        status_final = "APROVADO"
+                        mensagem_erro = f"Sucesso! Margem: {texto_valor}"
+
+                        try:
+                            # Opção 1: A mais robusta (busca botão com nome 'Simular')
+                            page.get_by_role("button", name="Simular").click()
+                        except:
+                            # Opção 2: Fallback caso o ícone atrapalhe (busca botão que contém texto 'Simular')
+                            page.locator("button").filter(has_text="Simular").first.click()
+
+                        print("[V8] Aguardando ofertas carregarem...")
+                        time.sleep(10) # Damos um tempinho a mais para a tabela aparecer
+
+                        print("[V8] Trocando produto para 'CLT Acelera'...")
+
+                        try:
+                            # Clica no texto "CLT Acelera - Seguro" para abrir o menu
+                            page.locator("text=CLT Acelera - Seguro").first.click()
+
+                            # Aguarda a opção aparecer e clica nela
+                            page.get_by_text("CLT Acelera", exact=True).click()
+
+                            print("[V8] Produto alterado com sucesso.")
+
+                        except Exception as e:
+                            print(f"\n[V8] ⚠️ Não consegui trocar o produto: {e}")
+                            print("Continuando com o padrão...")
+
+                        try:
+                            toast_erro = page.locator("div[role='status'].chakra-toast__inner").first
+                            toast_erro.wait_for(state="visible", timeout=10000)
+
+                            mensagem_toast = toast_erro.locator("p").first.text_content()
+                            print(f"\n⛔ SIMULAÇÃO BARRADA: {mensagem_toast}")
+
+                            status_final = "REPROVADO_SIMULACAO"
+                            mensagem_erro = f"Simulação recusada: {mensagem_toast}"
+
+                            break # <--- ENCERRA O LOOP IMEDIATAMENTE
+
+                        except PlaywrightTimeoutError:
+
+                            print("[V8] Nenhum erro de elegibilidade detectado. Continuando...")
+
+
+
+
+
+
+
+## NAO TERMINEI O CODIGO!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+
+
+
+
+
+                    else:
+                        print(f"\n⛔ MARGEM INSUFICIENTE. Encerrando.")
+                        status_final = "REPROVADO_BAIXA_MARGEM"
+                        mensagem_erro = f"Margem insuficiente: {texto_valor}"
+                    break
+
                 # Se encontrou algum (count > 0)
-                if badge_rejeitado.count() > 0 or badge_falha.count() > 0:
-                    print("[V8] 🚨 Erro detectado! Iniciando captura inteligente...")
+                elif badge_rejeitado.count() > 0 or badge_falha.count() > 0:
+                    print("\n[V8] 🚨 Erro detectado! Iniciando captura inteligente...")
                     
                     # Define quem é o alvo (quem apareceu na tela)
                     alvo = badge_rejeitado.first if badge_rejeitado.count() > 0 else badge_falha.first
@@ -249,7 +376,7 @@ def executar_automacao_v8(dados_cliente):
                             raise Exception("Portal vazio")
                             
                     except:
-                        print("⚠️ Falha ao capturar pelo Portal. Tentando fallback...")
+                        print("\n⚠️ Falha ao capturar pelo Portal. Tentando fallback...")
                         # Fallback: Tenta pegar qualquer texto que tenha aparecido flutuando
                         try:
                             texto_flutuante = page.locator("div[id^='tooltip-']").last
@@ -258,7 +385,7 @@ def executar_automacao_v8(dados_cliente):
                         except:
                             pass
 
-                    print(f"❌ MENSAGEM FINAL: {mensagem_erro}")
+                    print(f"\n❌ MENSAGEM FINAL: {mensagem_erro}")
                     
                     # Salva o status e sai do loop
                     status_final = "ERRO"
@@ -272,13 +399,13 @@ def executar_automacao_v8(dados_cliente):
             
             # Validação final para o VS Code não reclamar da variável
             if status_final == "ERRO":
-                print(f"🚨 Processo finalizado com FALHA: {mensagem_erro}")
+                print(f"\n🚨 Processo finalizado com FALHA: {mensagem_erro}")
                 # Se quiser parar o robô aqui: raise Exception(mensagem_erro)
             else:
-                print("✅ Processo finalizado com SUCESSO (Aprovado ou tempo esgotado).")
+                print("\n⛔ Processo finalizado (Tempo esgotado).")
 
         except Exception as e:
-            print(f"[V8] Erro durante a automação: {e}")
+            print(f"\n[V8] Erro durante a automação: {e}")
             page.screenshot(path="eerro_v8.png")
         
         finally:
