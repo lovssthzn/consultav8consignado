@@ -232,7 +232,7 @@ def executar_automacao_v8(dados_cliente):
             nova_aba.close()
 
             # PASSO 5: LOOP DE VERIFICAÇÃO DE ERROS
-            max_tentativas = 25
+            max_tentativas = 30
             status_final = None
 
             for i in range(max_tentativas):
@@ -257,7 +257,7 @@ def executar_automacao_v8(dados_cliente):
                 badge_rejeitado = page.get_by_text("Rejeitado").locator("visible=true")
                 badge_falha = page.get_by_text("Falha ao gerar consentimento").locator("visible=true")
 
-                badge_margem = page.locator("text=/^R\$\s/").locator("visible=true")
+                badge_margem = page.locator(r"text=/^R\$\s/").locator("visible=true")
 
                 if badge_margem.count() > 0:
                     texto_valor = badge_margem.first.text_content()
@@ -314,19 +314,7 @@ def executar_automacao_v8(dados_cliente):
 
                             print("[V8] Nenhum erro de elegibilidade detectado. Continuando...")
 
-
-
-
-
-
-
 ## NAO TERMINEI O CODIGO!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-
-
-
-
-
 
                     else:
                         print(f"\n⛔ MARGEM INSUFICIENTE. Encerrando.")
