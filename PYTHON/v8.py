@@ -157,7 +157,7 @@ def executar_automacao_v8(dados_cliente):
             page.get_by_text("Gênero", exact=True).click()
             page.get_by_text(sexo_formatado, exact=True).click()
             time.sleep(2)
-            page.click("button[type='submit']")
+            page.get_by_role("button", name="Gerar Autorização").click()
             
             time.sleep(1)  # Aguarda 2 segundos
 
@@ -218,7 +218,7 @@ def executar_automacao_v8(dados_cliente):
 
             nova_aba.wait_for_selector('input[name="cpf"]')
             nova_aba.fill('input[name="cpf"]', dados_cliente['CPF'])
-            nova_aba.click("button[type='submit']")
+            nova_aba.get_by_role("button", name="Próximo").click()
             time.sleep(2)
 
             nova_aba.locator(".chakra-checkbox__control").first.click()
